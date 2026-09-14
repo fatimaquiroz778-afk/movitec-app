@@ -29,7 +29,8 @@ function App() {
   
   const [filtroVista, setFiltroVista] = useState('todas')
   const [modoEdicion, setModoEdicion] = useState(false)
-  const [formTarea, setFormTarea] = useState({ id: null, titulo: '', descripcion: '', fecha_limite: '', asignado_a: '', estado: 'Asignada' })
+  
+  const [formTarea, setFormTarea] = useState({ id: null, titulo: '', descripcion: '', fecha_limite: '', asignado_a: [], estado: 'Asignada' })
 
   const COLOR_AZUL_TECNM = '#1B396A'
   const COLOR_VERDE_MOVITEC = '#006847'
@@ -62,7 +63,7 @@ function App() {
   useEffect(() => {
     if (!session) return;
     let timeoutId;
-    const tiempoLimite = 30 * 60 * 1000; // 30 minutos
+    const tiempoLimite = 30 * 60 * 1000; 
 
     const reiniciarTemporizador = () => {
       clearTimeout(timeoutId);
@@ -119,8 +120,13 @@ function App() {
     
     if (listaTareas && miembros) {
       const tareasConArea = listaTareas.map(t => {
-        const asignado = miembros.find(m => m.id === t.asignado_a)
-        return { ...t, area_asignado: asignado ? asignado.area : 'ninguna' }
+        const idsAsignados = Array.isArray(t.asignado_a) ? t.asignado_a : (t.asignado_a ? [t.asignado_a] : [])
+        const areasAsignadas = idsAsignados.map(id => {
+          const u = miembros.find(m => m.id === id)
+          return u ? u.area : null
+        }).filter(Boolean)
+
+        return { ...t, asignado_a: idsAsignados, areas_asignadas: areasAsignadas }
       })
       setTareas(tareasConArea)
     }
@@ -170,12 +176,17 @@ function App() {
     setSubVistaTarea(vista)
     setModoEdicion(false)
     if (vista === 'asignar') {
-      setFormTarea({ id: null, titulo: '', descripcion: '', fecha_limite: '', asignado_a: '', estado: 'Asignada' })
+      setFormTarea({ id: null, titulo: '', descripcion: '', fecha_limite: '', asignado_a: [], estado: 'Asignada' })
     }
   }
 
   const guardarTarea = async (e) => {
     e.preventDefault()
+    if (formTarea.asignado_a.length === 0) {
+      alert("Debes seleccionar al menos un miembro para asignar la tarea.")
+      return
+    }
+
     let errorSupabase = null;
 
     if (modoEdicion) {
@@ -189,7 +200,7 @@ function App() {
         titulo: formTarea.titulo, descripcion: formTarea.descripcion, fecha_limite: formTarea.fecha_limite, asignado_a: formTarea.asignado_a, creador_id: session.user.id, estado: 'Asignada'
       }])
       errorSupabase = error;
-      if (!error) setFormTarea({ id: null, titulo: '', descripcion: '', fecha_limite: '', asignado_a: '', estado: 'Asignada' })
+      if (!error) setFormTarea({ id: null, titulo: '', descripcion: '', fecha_limite: '', asignado_a: [], estado: 'Asignada' })
     }
 
     if (errorSupabase) alert('Error al guardar: ' + errorSupabase.message)
@@ -212,9 +223,29 @@ function App() {
     else cargarTablero()
   }
 
-  const obtenerNombreAsignado = (id) => {
-    const usuario = usuariosEquipo.find(u => u.id === id)
-    return usuario ? usuario.usuario : 'Sin asignar'
+  // FUNCIONES DE MANEJO DE INTEGRANTES (ETIQUETAS)
+  const agregarMiembroSeleccionado = (idUsuario) => {
+    if (!idUsuario) return
+    if (!formTarea.asignado_a.includes(idUsuario)) {
+      setFormTarea({ ...formTarea, asignado_a: [...formTarea.asignado_a, idUsuario] })
+    }
+  }
+
+  const removerMiembroSeleccionado = (idUsuario) => {
+    setFormTarea({
+      ...formTarea,
+      asignado_a: formTarea.asignado_a.filter(id => id !== idUsuario)
+    })
+  }
+
+  const obtenerNombreAsignado = (ids) => {
+    if (!ids || !Array.isArray(ids) || ids.length === 0) return 'Sin asignar'
+    const nombres = ids.map(id => {
+      const usuario = usuariosEquipo.find(u => u.id === id)
+      return usuario ? usuario.usuario : null
+    }).filter(Boolean)
+
+    return nombres.length > 0 ? nombres.join(', ') : 'Sin asignar'
   }
 
   const formatearAreaVisual = (area) => {
@@ -233,21 +264,89 @@ function App() {
 
     let tareasFiltradas = tareas;
     if (filtroVista === 'mis_tareas') {
-      tareasFiltradas = tareas.filter(t => t.asignado_a === session.user.id)
+      tareasFiltradas = tareas.filter(t => Array.isArray(t.asignado_a) && t.asignado_a.includes(session.user.id))
     } else if (filtroVista === 'mi_area') {
       if (perfil.area === 'mecanica' || perfil.area === 'diseno') {
-        tareasFiltradas = tareas.filter(t => t.area_asignado === 'mecanica' || t.area_asignado === 'diseno')
+        tareasFiltradas = tareas.filter(t => t.areas_asignadas?.some(a => a === 'mecanica' || a === 'diseno'))
       } else {
-        tareasFiltradas = tareas.filter(t => t.area_asignado === perfil.area)
+        tareasFiltradas = tareas.filter(t => t.areas_asignadas?.includes(perfil.area))
       }
     } else if (['mecanica', 'electronica', 'administracion', 'diseno'].includes(filtroVista)) {
-      tareasFiltradas = tareas.filter(t => t.area_asignado === filtroVista)
+      tareasFiltradas = tareas.filter(t => t.areas_asignadas?.includes(filtroVista))
+    }
+
+    // Componente interno para el Selector Dinámico de Integrantes
+    const SelectorAsignados = () => {
+      const disponibles = usuariosEquipo.filter(u => !formTarea.asignado_a.includes(u.id))
+
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <label style={{ fontSize: '14px', color: 'gray' }}>Asignar a:</label>
+          
+          {/* Desplegable para seleccionar miembros faltantes */}
+          <select 
+            value="" 
+            onChange={e => {
+              agregarMiembroSeleccionado(e.target.value);
+            }} 
+            style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }}
+          >
+            <option value="">-- Seleccionar integrante para agregar --</option>
+            {disponibles.map(u => (
+              <option key={u.id} value={u.id}>
+                + {u.usuario} ({formatearAreaVisual(u.area)})
+              </option>
+            ))}
+          </select>
+
+          {/* Burbujas / Etiquetas de integrantes seleccionados */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
+            {formTarea.asignado_a.map(id => {
+              const u = usuariosEquipo.find(user => user.id === id)
+              if (!u) return null
+              return (
+                <span 
+                  key={u.id} 
+                  style={{
+                    backgroundColor: COLOR_AZUL_TECNM,
+                    color: 'white',
+                    padding: '5px 10px',
+                    borderRadius: '15px',
+                    fontSize: '13px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {u.usuario}
+                  <button 
+                    type="button" 
+                    onClick={() => removerMiembroSeleccionado(u.id)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'white',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      padding: 0,
+                      fontSize: '14px',
+                      lineHeight: '1'
+                    }}
+                  >
+                    ✕
+                  </button>
+                </span>
+              )
+            })}
+          </div>
+        </div>
+      )
     }
 
     return (
       <div style={{ fontFamily: 'Arial, sans-serif', margin: '-8px', backgroundColor: '#f4f4f4', minHeight: '100vh', position: 'relative', boxSizing: 'border-box' }}>
         
-        {/* BARRA DE NAVEGACIÓN ADAPTABLE */}
+        {/* BARRA DE NAVEGACIÓN */}
         <nav style={{ backgroundColor: COLOR_AZUL_TECNM, color: 'white', padding: '15px 20px', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center' }}>
             <h2 style={{ margin: 0, paddingRight: '20px', borderRight: '2px solid white', color: '#FFFFFF', fontSize: '20px' }}>MOVITEC</h2>
@@ -281,7 +380,7 @@ function App() {
           </div>
         </nav>
 
-        {/* CONTENEDOR PRINCIPAL FLUIDO */}
+        {/* CONTENEDOR PRINCIPAL */}
         <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto', boxSizing: 'border-box' }}>
           
           {vistaActual === 'tareas' && (
@@ -309,7 +408,7 @@ function App() {
                 </div>
               </div>
               
-              {/* TABLERO KANBAN HORIZONTAL ADAPTABLE */}
+              {/* TABLERO KANBAN */}
               <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', overflowX: 'auto', paddingBottom: '15px', width: '100%', boxSizing: 'border-box' }}>
                 {columnasKanban.map(columna => (
                   <div key={columna.estado} style={{ flex: '0 0 280px', backgroundColor: columna.fondo, padding: '15px', borderRadius: '8px', boxSizing: 'border-box' }}>
@@ -319,7 +418,7 @@ function App() {
                     
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                       {tareasFiltradas.filter(t => t.estado === columna.estado).map(tarea => {
-                        const esMiTarea = tarea.asignado_a === session.user.id;
+                        const esMiTarea = Array.isArray(tarea.asignado_a) && tarea.asignado_a.includes(session.user.id);
                         const esAdminOLider = perfil.rol === 'admin' || perfil.rol === 'lider';
 
                         return (
@@ -328,7 +427,7 @@ function App() {
                             <p style={{ margin: '0 0 12px 0', color: '#555', fontSize: '13px', lineHeight: '1.4', wordBreak: 'break-word' }}>{tarea.descripcion}</p>
                             
                             <div style={{ fontSize: '12px', color: 'gray', borderTop: '1px solid #eee', paddingTop: '8px', marginBottom: '10px' }}>
-                              <strong>Asignado:</strong> {obtenerNombreAsignado(tarea.asignado_a)} <br/>
+                              <strong>Asignado a:</strong> {obtenerNombreAsignado(tarea.asignado_a)} <br/>
                               <strong style={{ color: new Date(tarea.fecha_limite) < new Date() && tarea.estado !== 'Completada' ? 'red' : 'inherit' }}>
                                 Fecha Límite: {tarea.fecha_limite || 'Sin fecha'}
                               </strong>
@@ -367,7 +466,7 @@ function App() {
             </div>
           )}
 
-          {/* VISTAS DE FORMULARIOS RESPONSIVAS (ANCHO MÁXIMO FLUIDO) */}
+          {/* GESTIONAR TAREAS */}
           {vistaActual === 'gestionarTareas' && (
             <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0px 2px 10px rgba(0,0,0,0.1)', maxWidth: '500px', width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
               <div style={{ display: 'flex', borderBottom: '2px solid #eee', marginBottom: '25px' }}>
@@ -383,13 +482,9 @@ function App() {
                   <label style={{ fontSize: '14px', color: 'gray', marginBottom: '-8px' }}>Fecha Límite:</label>
                   <input type="date" required value={formTarea.fecha_limite} onChange={e => setFormTarea({...formTarea, fecha_limite: e.target.value})} style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }} />
                   
-                  <label style={{ fontSize: '14px', color: 'gray', marginBottom: '-8px' }}>Asignar a:</label>
-                  <select required value={formTarea.asignado_a} onChange={e => setFormTarea({...formTarea, asignado_a: e.target.value})} style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }}>
-                    <option value="">Selecciona un usuario...</option>
-                    {usuariosEquipo.map(u => (
-                      <option key={u.id} value={u.id}>{u.usuario} ({formatearAreaVisual(u.area)})</option>
-                    ))}
-                  </select>
+                  {/* Selector con Etiquetas Interactivas */}
+                  <SelectorAsignados />
+                  
                   <button type="submit" style={{ backgroundColor: COLOR_VERDE_MOVITEC, color: 'white', border: 'none', padding: '12px', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px', width: '100%' }}>Guardar y Asignar Tarea</button>
                 </form>
               )}
@@ -410,10 +505,11 @@ function App() {
                       <input type="text" required value={formTarea.titulo} onChange={e => setFormTarea({...formTarea, titulo: e.target.value})} style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }} />
                       <textarea required rows="4" value={formTarea.descripcion} onChange={e => setFormTarea({...formTarea, descripcion: e.target.value})} style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', resize: 'none', width: '100%', boxSizing: 'border-box' }}></textarea>
                       <input type="date" required value={formTarea.fecha_limite} onChange={e => setFormTarea({...formTarea, fecha_limite: e.target.value})} style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }} />
-                      <select required value={formTarea.asignado_a} onChange={e => setFormTarea({...formTarea, asignado_a: e.target.value})} style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }}>
-                        {usuariosEquipo.map(u => <option key={u.id} value={u.id}>{u.usuario} ({formatearAreaVisual(u.area)})</option>)}
-                      </select>
-                      <select value={formTarea.estado} onChange={e => setFormTarea({...formTarea, estado: e.target.value})} style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }}>
+                      
+                      {/* Selector con Etiquetas Interactivas */}
+                      <SelectorAsignados />
+                      
+                      <select value={formTarea.estado} onChange={e => setFormTarea({...formTarea, estado: e.target.value})} style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', width: '100%', boxSizing: 'border-box', marginTop: '5px' }}>
                         <option value="Asignada">Asignada</option>
                         <option value="En Proceso">En Proceso</option>
                         <option value="Terminada">Terminada (Revisión)</option>
