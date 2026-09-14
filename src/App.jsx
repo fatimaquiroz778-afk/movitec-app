@@ -36,10 +36,10 @@ function App() {
   const COLOR_VERDE_MOVITEC = '#006847'
 
   const columnasKanban = [
-    { titulo: '📋 Asignadas', estado: 'Asignada', fondo: '#f3f4f6', borde: 'gray' },
-    { titulo: '⚙️ En Proceso', estado: 'En Proceso', fondo: '#e0e7ff', borde: '#3b82f6' },
-    { titulo: '🔍 Terminadas (Revisión)', estado: 'Terminada', fondo: '#fef3c7', borde: 'orange' },
-    { titulo: '🏆 Completadas', estado: 'Completada', fondo: '#ccfbf1', borde: COLOR_VERDE_MOVITEC }
+    { titulo: 'Asignadas', estado: 'Asignada', fondo: '#f3f4f6', borde: 'gray' },
+    { titulo: 'En Proceso', estado: 'En Proceso', fondo: '#e0e7ff', borde: '#3b82f6' },
+    { titulo: 'Terminadas (Revisión)', estado: 'Terminada', fondo: '#fef3c7', borde: 'orange' },
+    { titulo: 'Completadas', estado: 'Completada', fondo: '#ccfbf1', borde: COLOR_VERDE_MOVITEC }
   ]
 
   useEffect(() => {
