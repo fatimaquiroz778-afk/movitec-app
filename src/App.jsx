@@ -60,6 +60,7 @@ function App() {
     })
   }, [])
 
+  // Cierre por inactividad
   useEffect(() => {
     if (!session) return;
     let timeoutId;
@@ -84,6 +85,7 @@ function App() {
     };
   }, [session]);
 
+  // Cierre de menú al dar clic fuera
   useEffect(() => {
     const handleClickFuera = (e) => {
       if (menuAbierto && !e.target.closest('.menu-usuario-container')) {
@@ -94,10 +96,11 @@ function App() {
     return () => document.removeEventListener('mousedown', handleClickFuera);
   }, [menuAbierto]);
 
+  // Filtro inicial por rol (Asesores, Líderes y Admins ven todas las áreas)
   useEffect(() => {
     if (perfil) {
       if (perfil.rol === 'miembro') setFiltroVista('mis_tareas')
-      else setFiltroVista('todas')
+      else setFiltroVista('todas') // Aplica para admin, lider y asesor
     }
   }, [perfil])
 
@@ -223,7 +226,6 @@ function App() {
     else cargarTablero()
   }
 
-  // FUNCIONES DE MANEJO DE INTEGRANTES (ETIQUETAS)
   const agregarMiembroSeleccionado = (idUsuario) => {
     if (!idUsuario) return
     if (!formTarea.asignado_a.includes(idUsuario)) {
@@ -275,20 +277,15 @@ function App() {
       tareasFiltradas = tareas.filter(t => t.areas_asignadas?.includes(filtroVista))
     }
 
-    // Componente interno para el Selector Dinámico de Integrantes
     const SelectorAsignados = () => {
       const disponibles = usuariosEquipo.filter(u => !formTarea.asignado_a.includes(u.id))
 
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <label style={{ fontSize: '14px', color: 'gray' }}>Asignar a:</label>
-          
-          {/* Desplegable para seleccionar miembros faltantes */}
           <select 
             value="" 
-            onChange={e => {
-              agregarMiembroSeleccionado(e.target.value);
-            }} 
+            onChange={e => agregarMiembroSeleccionado(e.target.value)} 
             style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }}
           >
             <option value="">-- Seleccionar integrante para agregar --</option>
@@ -299,7 +296,6 @@ function App() {
             ))}
           </select>
 
-          {/* Burbujas / Etiquetas de integrantes seleccionados */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
             {formTarea.asignado_a.map(id => {
               const u = usuariosEquipo.find(user => user.id === id)
@@ -322,16 +318,7 @@ function App() {
                   <button 
                     type="button" 
                     onClick={() => removerMiembroSeleccionado(u.id)}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'white',
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                      padding: 0,
-                      fontSize: '14px',
-                      lineHeight: '1'
-                    }}
+                    style={{ background: 'none', border: 'none', color: 'white', fontWeight: 'bold', cursor: 'pointer', padding: 0, fontSize: '14px', lineHeight: '1' }}
                   >
                     ✕
                   </button>
@@ -391,7 +378,8 @@ function App() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
                   <span style={{ fontWeight: 'bold', color: COLOR_AZUL_TECNM, fontSize: '14px' }}>Filtrar:</span>
                   
-                  {(perfil.rol === 'admin' || perfil.rol === 'lider') ? (
+                  {/* Selector visible para Admins, Líderes y Asesores */}
+                  {(perfil.rol === 'admin' || perfil.rol === 'lider' || perfil.rol === 'asesor') ? (
                     <select value={filtroVista} onChange={(e) => setFiltroVista(e.target.value)} style={{ padding: '8px', borderRadius: '5px', border: '1px solid #ccc', fontSize: '14px' }}>
                       <option value="todas">Todas las Áreas</option>
                       <option value="mecanica">Área Mecánica</option>
@@ -417,25 +405,38 @@ function App() {
                     </h3>
                     
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                      {tareasFiltradas.filter(t => t.estado === columna.estado).map(tarea => {
+                      {tareasFiltradas.filter(t => t.estado.startsWith(columna.estado)).map(tarea => {
                         const esMiTarea = Array.isArray(tarea.asignado_a) && tarea.asignado_a.includes(session.user.id);
                         const esAdminOLider = perfil.rol === 'admin' || perfil.rol === 'lider';
+                        
+                        // Cálculo de fecha de atraso
+                        const hoy = new Date().toISOString().split('T')[0];
+                        const estaAtrasada = tarea.fecha_limite && tarea.fecha_limite < hoy && tarea.estado !== 'Completada';
 
                         return (
                           <div key={tarea.id} style={{ backgroundColor: 'white', padding: '12px', borderRadius: '8px', boxShadow: '0px 2px 5px rgba(0,0,0,0.05)', borderLeft: `5px solid ${columna.borde}`, boxSizing: 'border-box' }}>
+                            
+                            {/* Etiqueta si la tarea fue rechazada */}
+                            {tarea.estado.includes('Rechazada') && (
+                              <span style={{ backgroundColor: '#fee2e2', color: '#991b1b', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', display: 'inline-block', marginBottom: '6px' }}>
+                                ✖ Rechazada previamente
+                              </span>
+                            )}
+
                             <h4 style={{ margin: '0 0 8px 0', color: COLOR_AZUL_TECNM, fontSize: '15px' }}>{tarea.titulo}</h4>
                             <p style={{ margin: '0 0 12px 0', color: '#555', fontSize: '13px', lineHeight: '1.4', wordBreak: 'break-word' }}>{tarea.descripcion}</p>
                             
                             <div style={{ fontSize: '12px', color: 'gray', borderTop: '1px solid #eee', paddingTop: '8px', marginBottom: '10px' }}>
                               <strong>Asignado a:</strong> {obtenerNombreAsignado(tarea.asignado_a)} <br/>
-                              <strong style={{ color: new Date(tarea.fecha_limite) < new Date() && tarea.estado !== 'Completada' ? 'red' : 'inherit' }}>
-                                Fecha Límite: {tarea.fecha_limite || 'Sin fecha'}
+                              <strong style={{ color: estaAtrasada ? '#dc2626' : 'inherit', fontWeight: estaAtrasada ? 'bold' : 'normal' }}>
+                                Fecha Límite: {tarea.fecha_limite || 'Sin fecha'} {estaAtrasada ? '(Atrasada)' : ''}
                               </strong>
                             </div>
 
+                            {/* Botones para Miembros */}
                             {perfil.rol === 'miembro' && esMiTarea && (
                               <div style={{ display: 'flex', justifyContent: 'center' }}>
-                                {tarea.estado === 'Asignada' && (
+                                {tarea.estado.startsWith('Asignada') && (
                                   <button onClick={() => cambiarEstadoTarea(tarea.id, 'En Proceso')} style={{ width: '100%', padding: '6px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Comenzar Tarea</button>
                                 )}
                                 {tarea.estado === 'En Proceso' && (
@@ -444,7 +445,23 @@ function App() {
                               </div>
                             )}
 
-                            {esAdminOLider && (
+                            {/* Botones Especiales de Aprobar / Rechazar para Admins y Líderes */}
+                            {esAdminOLider && tarea.estado === 'Terminada' ? (
+                              <div style={{ display: 'flex', gap: '5px', marginTop: '8px' }}>
+                                <button 
+                                  onClick={() => cambiarEstadoTarea(tarea.id, 'Asignada (Rechazada)')} 
+                                  style={{ flex: 1, backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '6px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                                >
+                                  ✖ Rechazar
+                                </button>
+                                <button 
+                                  onClick={() => cambiarEstadoTarea(tarea.id, 'Completada')} 
+                                  style={{ flex: 1, backgroundColor: COLOR_VERDE_MOVITEC, color: 'white', border: 'none', padding: '6px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                                >
+                                  ✓ Aprobar
+                                </button>
+                              </div>
+                            ) : esAdminOLider && (
                               <select 
                                 value={tarea.estado} 
                                 onChange={(e) => cambiarEstadoTarea(tarea.id, e.target.value)} 
@@ -482,7 +499,6 @@ function App() {
                   <label style={{ fontSize: '14px', color: 'gray', marginBottom: '-8px' }}>Fecha Límite:</label>
                   <input type="date" required value={formTarea.fecha_limite} onChange={e => setFormTarea({...formTarea, fecha_limite: e.target.value})} style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }} />
                   
-                  {/* Selector con Etiquetas Interactivas */}
                   <SelectorAsignados />
                   
                   <button type="submit" style={{ backgroundColor: COLOR_VERDE_MOVITEC, color: 'white', border: 'none', padding: '12px', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px', width: '100%' }}>Guardar y Asignar Tarea</button>
@@ -506,7 +522,6 @@ function App() {
                       <textarea required rows="4" value={formTarea.descripcion} onChange={e => setFormTarea({...formTarea, descripcion: e.target.value})} style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', resize: 'none', width: '100%', boxSizing: 'border-box' }}></textarea>
                       <input type="date" required value={formTarea.fecha_limite} onChange={e => setFormTarea({...formTarea, fecha_limite: e.target.value})} style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }} />
                       
-                      {/* Selector con Etiquetas Interactivas */}
                       <SelectorAsignados />
                       
                       <select value={formTarea.estado} onChange={e => setFormTarea({...formTarea, estado: e.target.value})} style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', width: '100%', boxSizing: 'border-box', marginTop: '5px' }}>
@@ -537,6 +552,7 @@ function App() {
             </div>
           )}
 
+          {/* ALTA Y GESTIÓN DE USUARIOS */}
           {vistaActual === 'usuarios' && (
             <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0px 2px 10px rgba(0,0,0,0.1)', maxWidth: '600px', width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
               
@@ -579,9 +595,12 @@ function App() {
                         <option value="administracion">Administración</option>
                         <option value="diseno">Diseño</option>
                       </select>
+                      
+                      {/* Rol de Asesor agregado aquí */}
                       <select value={formUser.rol} onChange={e => setFormUser({...formUser, rol: e.target.value})} style={{ flex: 1, minWidth: '130px', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}>
                         <option value="miembro">Miembro</option>
                         <option value="lider">Líder</option>
+                        <option value="asesor">Asesor</option>
                         <option value="admin">Administrador</option>
                       </select>
                     </div>
